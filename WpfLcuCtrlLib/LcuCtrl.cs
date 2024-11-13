@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Security.RightsManagement;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Serialization;
@@ -12,25 +13,30 @@ using Renci.SshNet;
 
 namespace WpfLcuCtrlLib
 {
-    public partial class LcuCtrl
+    public partial class LcuCtrl(string lcuName)
     {
         private static readonly HttpClient httpClient = new HttpClient();
+
+        public string? Name { get; set; } = lcuName;
+        public string? FtpUser { get; set; }
+        public string? FtpPassword { get; set; }
 
         /// <summary>
         ///  SFTP Download
         /// </summary>
-        /// <param name="host"></param>
-        /// <param name="username"></param>
-        /// <param name="password"></param>
         /// <param name="localFilePath"></param>
         /// <param name="remoteFilePath"></param>
-        public static void SFTP_Download(string host, string username, string password, string localFilePath, string remoteFilePath)
+        public void SFTP_Download(string localFilePath, string remoteFilePath)
         {
-            MemoryStream ms = new MemoryStream(Encoding.UTF8.GetBytes(password));
-
-            var connectionInfo = new ConnectionInfo(host, username, new AuthenticationMethod[]
+            if(FtpUser == null || FtpPassword == null)
             {
-                new PrivateKeyAuthenticationMethod(username, new PrivateKeyFile[] { new PrivateKeyFile(ms) }),
+                return;
+            }
+            MemoryStream ms = new MemoryStream(Encoding.UTF8.GetBytes(FtpPassword));
+
+            var connectionInfo = new ConnectionInfo(Name, FtpUser, new AuthenticationMethod[]
+            {
+                new PrivateKeyAuthenticationMethod(FtpUser, new PrivateKeyFile[] { new PrivateKeyFile(ms) }),
             });
 
             using (var client = new SftpClient(connectionInfo)) {
@@ -53,18 +59,20 @@ namespace WpfLcuCtrlLib
         /// <summary>
         /// SFTP Upload
         /// </summary>
-        /// <param name="host"></param>
-        /// <param name="username"></param>
-        /// <param name="password"></param>
         /// <param name="localFilePath"></param>
         /// <param name="remoteFilePath"></param>
-        public static void SFTP_Upload(string host, string username, string password, string localFilePath, string remoteFilePath)
+        public void SFTP_Upload(string localFilePath, string remoteFilePath)
         {
-            MemoryStream ms = new MemoryStream(Encoding.UTF8.GetBytes(password));
-
-            var connectionInfo = new Renci.SshNet.ConnectionInfo(host, username, new AuthenticationMethod[]
+            if(FtpUser == null || FtpPassword == null)
             {
-                new PrivateKeyAuthenticationMethod(username, new PrivateKeyFile[] { new PrivateKeyFile(ms) }),
+                return;
+            }
+
+            MemoryStream ms = new MemoryStream(Encoding.UTF8.GetBytes(FtpPassword));
+
+            var connectionInfo = new Renci.SshNet.ConnectionInfo(Name, FtpUser, new AuthenticationMethod[]
+            {
+                new PrivateKeyAuthenticationMethod(FtpUser, new PrivateKeyFile[] { new PrivateKeyFile(ms) }),
             });
 
             using (var client = new SftpClient(connectionInfo)) {
@@ -91,9 +99,9 @@ namespace WpfLcuCtrlLib
         /// <param name="host"></param>
         /// <param name="command"></param>
         /// <returns></returns>
-        public async Task<string> LCU_HttpGet(string host, string command)
+        public async Task<string> LCU_HttpGet(string command)
         {
-            var uri = new Uri($"http://{host}/LCUWeb/api/{command}");
+            var uri = new Uri($"http://{Name}/LCUWeb/api/{command}");
 
             var httpWebRequest = (HttpWebRequest)HttpWebRequest.Create(uri);
             var response = await httpWebRequest.GetResponseAsync();
@@ -170,9 +178,9 @@ namespace WpfLcuCtrlLib
         /// <param name="host"></param>
         /// <param name="payload"></param>
         /// <returns></returns>
-        private async Task<string> LCU_Command(string host, string payload)
+        public async Task<string> LCU_Command(string payload)
         {
-            var uri = new Uri($"http://{host}/LCUWeb/api/lcuCommand");
+            var uri = new Uri($"http://{Name}/LCUWeb/api/lcuCommand");
 
             var content = new StringContent(payload, Encoding.UTF8, "application/json");
             string ret = "";
@@ -200,9 +208,9 @@ namespace WpfLcuCtrlLib
         /// LCUのディスク情報を取得する
         /// </summary>
         /// <param name="host"></param>
-        public async Task<bool> LCU_DiskInfo(string host)
+        public async Task<bool> LCU_DiskInfo()
         {
-            var ret = await LCU_Command(host,LcuDiskInfo.Command());
+            var ret = await LCU_Command(LcuDiskInfo.Command());
 
             if( ret == "") {
                 return false;
@@ -224,9 +232,9 @@ namespace WpfLcuCtrlLib
         ///  LCUのバージョン情報を取得する
         /// </summary>
         /// <param name="host"></param>
-        public async Task<bool> LCU_Version(string host)
+        public async Task<bool> LCU_Version()
         {
-            string ret = await LCU_Command(host,LcuVersion.Command());
+            string ret = await LCU_Command(LcuVersion.Command());
             if( ret == "") {
                 return false;
             }
@@ -248,12 +256,12 @@ namespace WpfLcuCtrlLib
         /// </summary>
         /// <param name="lcuName"></param>
         /// <param name="mcName"></param>
-        public async void LCU_GetMcFileList(string lcuName, string mcName)
+        public async void LCU_GetMcFileList(string mcName)
         {
             // FTPアカウント情報を取得
             string password = "password";
 
-            string ret = await LCU_Command(lcuName, McFileList.Command(mcName, 1, password, @"/Data"));
+            string ret = await LCU_Command(McFileList.Command(mcName, 1, password, @"/Data"));
 
             if (ret == "") {
                 return;
@@ -276,20 +284,40 @@ namespace WpfLcuCtrlLib
                 }
             }
         }
-/*
-         /// <summary>
-        ///  LCU "lines" の情報を取得する
+
+            /*
+        /// <summary>
+        /// 装置からファイルを取得する
         /// </summary>
-        /// <param name="lcuName"></param>
-        public async Task<LineInfo>? ReadLcuLineInfo(string lcuName)
+        /// <param name="lcu"></param>
+        /// <param name="machine"></param>
+        /// <param name="path"></param>
+        public async Task<bool> GetMachineFile(string lcuName, string mcFilePath, string localPath)
         {
-            string response = await LCU_HttpGet(lcuName, "lines");
+            string fileName = Path.GetFileName(mcFilePath);
+            string mcPass = "password"; // 仮パスワード
 
-            XmlSerializer serializer = new(typeof(LineInfo));
+            // 装置(machine)からファイル(path)を取得する(LCU の <FtpRoot>/MCFiles/{name} に保存されている)
+            //   (装置のFTPアカウントはAdministrator/password とする)
+            string ret = await LCU_Command(lcuName,GetMcFile.Command(machine.Name, module.Module.LogicalPos, mcPass, mcFilePath, fileName));
 
-            LineInfo? lineInfo = (LineInfo)serializer.Deserialize( new StringReader(response));
+            // LCU FTPアカウント情報を取得
+            //string? user = FtpUser;
+            //string? password = FtpPassword;
+            string user = "Administrator";
+            string password = "password";
 
-            return lineInfo;
+            // LCUからファイルを取得する(FTP, SFTP)
+            //var ftpUrl = $"ftp://{lcu.Name.Split(":")[0]}/MCFiles/" + name;
+            // Debug 用にFTPを一つでまかなうため
+            var ftpUrl = $"ftp://{lcuName.Split(":")[0]}/LCU_{module.Module.LogicalPos}/MCFiles/" + fileName;
+
+            string remoteFilePath = "/MCFiles/" + fileName;
+            //string localFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), name);
+            string localFilePath = localPath;
+
+            FTP_Download(ftpUrl, user, password, localFilePath, remoteFilePath);
+            return true;
         }
 */
     }

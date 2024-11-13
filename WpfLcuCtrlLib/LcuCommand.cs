@@ -11,9 +11,11 @@ using System.Xml.Serialization;
 
 namespace WpfLcuCtrlLib
 {
+    /*
     internal class LcuCommand
     {
     }
+    */
 
     [XmlRoot("lines")]
     public class LineInfo
@@ -54,7 +56,7 @@ namespace WpfLcuCtrlLib
             this.MaxLane = machine.MaxLane;
             this.ModelName = machine.ModelName;
         }
-}
+    }
     public class Base
     {
         [XmlElement("baseId")]
@@ -109,17 +111,17 @@ namespace WpfLcuCtrlLib
         public string? username { get; set; }
         public string? password { get; set; }
 
-        internal static string Command()
+        public static string Command()
         {
             return "{\"cmd\":\"GetFTPAccount\"}";
         }
-        internal static FtpData? FromJson(string str)
+        public static FtpData? FromJson(string str)
         {
             FtpData? data = JsonSerializer.Deserialize<FtpData>(str);
 
             return data;
         }
-        internal static string GetPasswd(string user, string passCode)
+        public static string GetPasswd(string user, string passCode)
         {
             string pass = "";
             SymmetricCryptography.Cryptography.DecryptUserPassword(user, passCode, ref pass);
@@ -248,10 +250,10 @@ namespace WpfLcuCtrlLib
 
         internal static string Command(string mcName, int moduleNo, string password, string folder)
         {
-            return $"{{\"cmd\":\"GetMCFileList\","+
+            return $"{{\"cmd\":\"GetMCFileList\"," +
                         $"\"properties\":{{" +
                             $"\"machineName\":\"{mcName}\"," +
-                            $"\"moduleNo\":{moduleNo}," + 
+                            $"\"moduleNo\":{moduleNo}," +
                             $"\"gantry\":2," +
                             $"\"mcLockUnlock\":{{" +
                                 $"\"lock\":{{\"cmdNo\":\"0x01000071\"}}," +
@@ -301,7 +303,8 @@ namespace WpfLcuCtrlLib
         public string? name { get; set; }
     }
 
-    public class FileGetData {
+    public class FileGetData
+    {
         public string? mcPath { get; set; }
         public string? lcuPath { get; set; }
         public string? errorCode { get; set; }
@@ -309,4 +312,9 @@ namespace WpfLcuCtrlLib
     }
 #pragma warning restore IDE1006 // 命名スタイル 
 
+    public class UserUpdate
+    {
+        public string? userName { get; set; }
+        public string? password { get; set; }
+    }
 }
