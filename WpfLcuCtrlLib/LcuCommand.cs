@@ -160,11 +160,11 @@ namespace WpfLcuCtrlLib
         public string? message { get; set; }
         public string? errorCode { get; set; }
 
-        internal static string Command()
+        public static string Command()
         {
             return @"{""cmd"":""GetLCUVersion"",""properties"":{""lang"":""jpn""}}";
         }
-        internal static List<LcuVersion>? FromJson(string str)
+        public static List<LcuVersion>? FromJson(string str)
         {
             List<LcuVersion>? list = JsonSerializer.Deserialize<List<LcuVersion>>(str);
 
@@ -179,13 +179,13 @@ namespace WpfLcuCtrlLib
         public string? total { get; set; }
         public string? free { get; set; }
 
-        internal static List<LcuDiskInfo>? FromJson(string str)
+        public static List<LcuDiskInfo>? FromJson(string str)
         {
             List<LcuDiskInfo>? list = JsonSerializer.Deserialize<List<LcuDiskInfo>>(str);
 
             return list;
         }
-        internal static string Command()
+        public static string Command()
         {
             return @"{""cmd"":""GetDiskInformation""}";
         }
@@ -199,13 +199,13 @@ namespace WpfLcuCtrlLib
         public string? message { get; set; }
         public string? errorCode { get; set; }
 
-        internal static List<LcuMachineVersion>? FromJson(string str)
+        public static List<LcuMachineVersion>? FromJson(string str)
         {
             List<LcuMachineVersion>? list = JsonSerializer.Deserialize<List<LcuMachineVersion>>(str);
 
             return list;
         }
-        internal static string Command(string lineName)
+        public static string Command(string lineName)
         {
             return $"{{\"cmd\":\"GetMachineVersionList\",\"properties\":{{\"lineName\":\"{lineName}\",\"lang\":\"jpn\"}}";
         }
@@ -217,7 +217,7 @@ namespace WpfLcuCtrlLib
         public McLockUnlock? mcLockUnlock { get; set; }
         public Ftp<FileGetData>? ftp { get; set; }
 
-        internal static string Command(string mcName, int moduleNo, string password, string mcPath, string lcuPath)
+        public static string Command(string mcName, int moduleNo, string user, string password, string mcPath, string lcuPath)
         {
             return $"{{\"cmd\":\"GetMCFile\"," +
                         $"\"properties\":{{" +
@@ -229,14 +229,14 @@ namespace WpfLcuCtrlLib
                                 $"\"unlock\":{{\"cmdNo\":\"0x01000072\"}}," +
                                 $"\"gantry\":1}}," +
                             $"\"ftp\":{{" +
-                            $"\"userName\":\"Administrator\",\"password\":\"{password}\"," +
+                            $"\"userName\":\"{user}\",\"password\":\"{password}\"," +
                                 $"\"data\":[{{" +
                             $"\"mcPath\":\"{mcPath}\"," +
                             $"\"lcuPath\":\"{lcuPath}\"}}" +
                             $"]" +
                         "}}}";
         }
-        internal static GetMcFile? FromJson(string str)
+        public static GetMcFile? FromJson(string str)
         {
             GetMcFile? file = JsonSerializer.Deserialize<GetMcFile>(str);
 
@@ -248,7 +248,7 @@ namespace WpfLcuCtrlLib
         public McLockUnlock? mcLockUnlock { get; set; }
         public Ftp<FileListData>? ftp { get; set; }
 
-        internal static string Command(string mcName, int moduleNo, string password, string folder)
+        public static string Command(string mcName, int moduleNo, string password, string folder)
         {
             return $"{{\"cmd\":\"GetMCFileList\"," +
                         $"\"properties\":{{" +
@@ -266,7 +266,7 @@ namespace WpfLcuCtrlLib
                                 $"]" +
                         "}}}";
         }
-        internal static McFileList? FromJson(string str)
+        public static McFileList? FromJson(string str)
         {
             McFileList? list = JsonSerializer.Deserialize<McFileList>(str);
 

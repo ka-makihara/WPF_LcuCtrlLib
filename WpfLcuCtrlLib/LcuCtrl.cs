@@ -13,7 +13,7 @@ using Renci.SshNet;
 
 namespace WpfLcuCtrlLib
 {
-    public partial class LcuCtrl(string lcuName)
+    public partial class LcuCtrl(string lcuName):IDisposable
     {
         private static readonly HttpClient httpClient = new HttpClient();
 
@@ -122,7 +122,7 @@ namespace WpfLcuCtrlLib
         /// <param name="password"></param>
         /// <param name="localFilePath"></param>
         /// <param name="remoteFilePath"></param>
-        public static void FTP_Download(string ftpUrl, string username, string password, string localFilePath, string remoteFilePath)
+        public static bool FTP_Download(string ftpUrl, string username, string password, string localFilePath, string remoteFilePath)
         {
             var request = (FtpWebRequest)WebRequest.Create(ftpUrl);
 
@@ -140,6 +140,7 @@ namespace WpfLcuCtrlLib
                 responseStream.CopyTo(fs);
                 Debug.WriteLine($"Download File Complete, status {response.StatusDescription}");
             }
+            return true;
         }
 
         /// <summary>
@@ -184,7 +185,6 @@ namespace WpfLcuCtrlLib
 
             var content = new StringContent(payload, Encoding.UTF8, "application/json");
             string ret = "";
-
             try {
                 var result = await httpClient.PostAsync(uri, content);
 
@@ -285,21 +285,23 @@ namespace WpfLcuCtrlLib
             }
         }
 
-            /*
         /// <summary>
         /// 装置からファイルを取得する
         /// </summary>
-        /// <param name="lcu"></param>
-        /// <param name="machine"></param>
-        /// <param name="path"></param>
-        public async Task<bool> GetMachineFile(string lcuName, string mcFilePath, string localPath)
+        /// <param name="lcuName">LCU名</param>
+        /// <param name="machineName">装置名</param>
+        /// <param name="pos">LogicalPos</param>
+        /// <param name="mcFilePath">取得したいファイル名</param>
+        /// <param name="localPath">取得したファイルをこの名前にする</param>
+        public async Task<bool> GetMachineFile(string lcuName, string machineName, int pos, string mcFilePath, string localPath)
         {
             string fileName = Path.GetFileName(mcFilePath);
             string mcPass = "password"; // 仮パスワード
+            string McUser = "Administrator"; // 仮ユーザー名
 
-            // 装置(machine)からファイル(path)を取得する(LCU の <FtpRoot>/MCFiles/{name} に保存されている)
-            //   (装置のFTPアカウントはAdministrator/password とする)
-            string ret = await LCU_Command(lcuName,GetMcFile.Command(machine.Name, module.Module.LogicalPos, mcPass, mcFilePath, fileName));
+            // 装置(machine)からファイル(path)を取得する(結果、LCU の <FtpRoot>/MCFiles/{name} に保存されている)
+            //   (装置のFTPアカウントはAdministrator/password とする　最終的にはC++  でユーザー名、パスワードを取得するようなDLLを作る)
+            string ret =await  LCU_Command(GetMcFile.Command(machineName, pos, McUser,mcPass, mcFilePath, fileName));
 
             // LCU FTPアカウント情報を取得
             //string? user = FtpUser;
@@ -308,17 +310,27 @@ namespace WpfLcuCtrlLib
             string password = "password";
 
             // LCUからファイルを取得する(FTP, SFTP)
-            //var ftpUrl = $"ftp://{lcu.Name.Split(":")[0]}/MCFiles/" + name;
             // Debug 用にFTPを一つでまかなうため
-            var ftpUrl = $"ftp://{lcuName.Split(":")[0]}/LCU_{module.Module.LogicalPos}/MCFiles/" + fileName;
+            var ftpUrl = $"ftp://{lcuName.Split(":")[0]}/LCU_{pos}/MCFiles/" + fileName;
+            
+            // 通常の場合
+            //var ftpUrl = $"ftp://{lcuName}/MCFiles/" + fileName;
 
             string remoteFilePath = "/MCFiles/" + fileName;
-            //string localFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), name);
             string localFilePath = localPath;
+            // ※デスクトップに保存する場合
+            //string localFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), fileName);
 
-            FTP_Download(ftpUrl, user, password, localFilePath, remoteFilePath);
-            return true;
+            return FTP_Download(ftpUrl, user, password, localFilePath, remoteFilePath);
+ 
         }
-*/
+
+        public void Dispose()
+        {
+            // LcuCtrl のインスタンス毎(LCU毎に接続先が異なるので)に HttpClient を生成しているので、Dispose する
+            //  いらないかも・・・
+            httpClient.Dispose();
+            Debug.WriteLine("LcuCtrl::Dispose");
+        }
     }
 }
