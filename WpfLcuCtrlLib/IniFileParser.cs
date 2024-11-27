@@ -57,7 +57,14 @@ namespace WpfLcuCtrlLib
                 else {
                     string[] keyValuePair = line.Split('=');
                     if (keyValuePair.Length == 2) {
-                        iniContent[currentSection][keyValuePair[0]] = keyValuePair[1];
+                        if (keyValuePair[1].Contains(":") == false)
+                        {
+                            iniContent[currentSection][keyValuePair[0]] = keyValuePair[1];
+                        }
+                        else
+                        {
+                            iniContent[currentSection][keyValuePair[0]] = keyValuePair[1].Split(":")[1];
+                        }
                     }
                 }
             }
@@ -73,6 +80,7 @@ namespace WpfLcuCtrlLib
         }
         public IList<string> SectionCount() => iniContent.Keys.ToList();
     }
+    /*
     public class UpdateInfo
     {
         public string? Name { get; set; }
@@ -80,4 +88,5 @@ namespace WpfLcuCtrlLib
         public string? Version { get; set; }
         public string? Path { get; set; }
     }
+    */
 }

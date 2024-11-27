@@ -117,6 +117,8 @@ namespace WpfLcuCtrlLib
         }
         public static FtpData? FromJson(string str)
         {
+            if (str == "") return null;
+
             FtpData? data = JsonSerializer.Deserialize<FtpData>(str);
 
             return data;
@@ -125,6 +127,8 @@ namespace WpfLcuCtrlLib
         {
             string pass = "";
             SymmetricCryptography.Cryptography.DecryptUserPassword(user, passCode, ref pass);
+
+            if (pass == "") pass = passCode;
 
             return pass;
         }
@@ -217,7 +221,7 @@ namespace WpfLcuCtrlLib
         public McLockUnlock? mcLockUnlock { get; set; }
         public Ftp<FileGetData>? ftp { get; set; }
 
-        public static string Command(string mcName, int moduleNo, string user, string password, string mcPath, string lcuPath)
+        public static string Command(string mcName, int moduleNo, string user, string password, List<string> files, string? lcuPath = null)
         {
             return $"{{\"cmd\":\"GetMCFile\"," +
                         $"\"properties\":{{" +
@@ -229,11 +233,8 @@ namespace WpfLcuCtrlLib
                                 $"\"unlock\":{{\"cmdNo\":\"0x01000072\"}}," +
                                 $"\"gantry\":1}}," +
                             $"\"ftp\":{{" +
-                            $"\"userName\":\"{user}\",\"password\":\"{password}\"," +
-                                $"\"data\":[{{" +
-                            $"\"mcPath\":\"{mcPath}\"," +
-                            $"\"lcuPath\":\"{lcuPath}\"}}" +
-                            $"]" +
+                                $"\"userName\":\"{user}\",\"password\":\"{password}\"," +
+                                $"\"data\":[" + CreateFileList(files, lcuPath) + $"]" +
                         "}}}";
         }
         public static GetMcFile? FromJson(string str)
@@ -242,13 +243,32 @@ namespace WpfLcuCtrlLib
 
             return file;
         }
+        public static string CreateFileList(List<string> files, string? path = null)
+        {
+            string fileList = "";
+
+            foreach (string file in files)
+            {
+                string mcPath = file.Trim('/');
+                string lcuPath = path + file.Trim('/');
+                if (fileList != "")
+                {
+                    fileList += ",";
+                }
+                fileList += $"{{\"mcPath\":\"{mcPath}\",\"lcuPath\":\"{lcuPath}\"}}";
+            }
+            fileList = fileList.TrimEnd(',');
+
+            return fileList;
+        }
     }
-    public class McFileList
+
+    public class GetMcFileList
     {
         public McLockUnlock? mcLockUnlock { get; set; }
         public Ftp<FileListData>? ftp { get; set; }
 
-        public static string Command(string mcName, int moduleNo, string password, string folder)
+        public static string Command(string mcName, int moduleNo, string user, string password, string folder)
         {
             return $"{{\"cmd\":\"GetMCFileList\"," +
                         $"\"properties\":{{" +
@@ -260,15 +280,15 @@ namespace WpfLcuCtrlLib
                                 $"\"unlock\":{{\"cmdNo\":\"0x01000072\"}}," +
                                 $"\"gantry\":1}}," +
                             $"\"ftp\":{{" +
-                                $"\"userName\":\"Administrator\",\"password\":\"{password}\"," +
+                                $"\"userName\":\"{user}\",\"password\":\"{password}\"," +
                                 $"\"data\":[{{" +
                                     $"\"mcPath\":\"{folder}\"}}" +
                                 $"]" +
                         "}}}";
         }
-        public static McFileList? FromJson(string str)
+        public static GetMcFileList? FromJson(string str)
         {
-            McFileList? list = JsonSerializer.Deserialize<McFileList>(str);
+            GetMcFileList? list = JsonSerializer.Deserialize<GetMcFileList>(str);
 
             return list;
         }
@@ -316,5 +336,64 @@ namespace WpfLcuCtrlLib
     {
         public string? userName { get; set; }
         public string? password { get; set; }
+    }
+
+    public class PostMcFile
+    {
+        public McLockUnlock? mcLockUnlock { get; set; }
+        public Ftp<FileListData>? ftp { get; set; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="mcName">装置名</param>
+        /// <param name="moduleNo">モジュール番号</param>
+        /// <param name="user">FTPユーザー名</param>
+        /// <param name="password">FTPパスワード</param>
+        /// <param name="files">ファイルリスト</param>
+        /// <returns></returns>
+        public static string Command(string mcName, int moduleNo, string user, string password, List<string> files, string? path = null)
+        {
+
+            string ret = $"{{\"cmd\":\"PostMCFile\"," +
+                        $"\"properties\":{{" +
+                            $"\"machineName\":\"{mcName}\"," +
+                            $"\"moduleNo\":{moduleNo}," +
+                            $"\"gantry\":2," +
+                            $"\"mcLockUnlock\":{{" +
+                                $"\"lock\":{{\"cmdNo\":\"0x01000071\"}}," +
+                                $"\"unlock\":{{\"cmdNo\":\"0x01000072\"}}," +
+                                $"\"gantry\":1}}," +
+                            $"\"ftp\":{{" +
+                                $"\"userName\":\"{user}\",\"password\":\"{password}\"," +
+                                $"\"data\":[" + CreateFileList(files, path) + $"]" +
+                        "}}}";
+
+            return ret;
+        }
+        public static GetMcFileList? FromJson(string str)
+        {
+            GetMcFileList? list = JsonSerializer.Deserialize<GetMcFileList>(str);
+
+            return list;
+        }
+        private static string CreateFileList(List<string> files, string? path = null)
+        {
+            string fileList = "";
+
+            foreach (string file in files)
+            {
+                string mcPath = file.Trim('/');
+                string lcuPath = path + file.Trim('/');
+                if (fileList != "")
+                {
+                    fileList += ",";
+                }
+                fileList += $"{{\"mcPath\":\"{mcPath}\",\"lcuPath\":\"{lcuPath}\",\"overwrite\":1}}";
+            }
+            fileList = fileList.TrimEnd(',');
+
+            return fileList;
+        }
     }
 }
