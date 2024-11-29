@@ -12,6 +12,7 @@ using System.Xml.Serialization;
 using Renci.SshNet;
 
 using FluentFTP;
+using Reactive.Bindings;
 
 namespace WpfLcuCtrlLib
 {
@@ -205,16 +206,16 @@ namespace WpfLcuCtrlLib
         /// <param name="host"></param>
         /// <param name="payload"></param>
         /// <returns></returns>
-        public async Task<string> LCU_Command(string payload)
+        public async Task<string> LCU_Command(string payload, CancellationToken token)
         {
             var uri = new Uri($"http://{Name}/LCUWeb/api/lcuCommand");
 
             var content = new StringContent(payload, Encoding.UTF8, "application/json");
             string ret = "";
             try {
-                var result = await httpClient.PostAsync(uri, content);
+                var result = await httpClient.PostAsync(uri, content,token);
 
-                var str = await result.Content.ReadAsStringAsync();
+                var str = await result.Content.ReadAsStringAsync(token);
 
                 Debug.WriteLine(result.StatusCode);
                 Debug.WriteLine(str);
@@ -223,6 +224,12 @@ namespace WpfLcuCtrlLib
             }
             catch (HttpRequestException e) {
                 Debug.WriteLine(e.Message);
+                throw;
+            }
+            catch (TaskCanceledException e)
+            {
+                Debug.WriteLine(e.Message);
+                throw;
             }
             finally {
                 content.Dispose();
@@ -234,9 +241,9 @@ namespace WpfLcuCtrlLib
         /// LCUのディスク情報を取得する
         /// </summary>
         /// <param name="host"></param>
-        public async Task<List<LcuDiskInfo>?> LCU_DiskInfo()
+        public async Task<List<LcuDiskInfo>?> LCU_DiskInfo(CancellationToken token)
         {
-            var ret = await LCU_Command(LcuDiskInfo.Command());
+            var ret = await LCU_Command(LcuDiskInfo.Command(),token);
 
             if( ret == "") {
                 return null;
@@ -258,9 +265,9 @@ namespace WpfLcuCtrlLib
         ///  LCUのバージョン情報を取得する
         /// </summary>
         /// <param name="host"></param>
-        public async Task<bool> LCU_Version()
+        public async Task<bool> LCU_Version(CancellationToken token)
         {
-            string ret = await LCU_Command(LcuVersion.Command());
+            string ret = await LCU_Command(LcuVersion.Command(),token);
             if( ret == "") {
                 return false;
             }
@@ -282,13 +289,13 @@ namespace WpfLcuCtrlLib
         /// </summary>
         /// <param name="lcuName"></param>
         /// <param name="mcName"></param>
-        public async void LCU_GetMcFileList(string mcName)
+        public async void LCU_GetMcFileList(string mcName, CancellationToken token)
         {
             // FTPアカウント情報
             string user = FtpUser;
             string password = FtpPassword;
 
-            string ret = await LCU_Command(GetMcFileList.Command(mcName, 1, user, password, @"/Data"));
+            string ret = await LCU_Command(GetMcFileList.Command(mcName, 1, user, password, @"/Data"),token);
 
             if (ret == "") {
                 return;
@@ -321,7 +328,7 @@ namespace WpfLcuCtrlLib
         /// <param name="mcFilePath">取得したいファイル名</param>
         /// <param name="lcuPath">LCU上の保存パス</param>
         /// <param name="localPath">取得したファイルを格納するパス</param>
-        public async Task<bool> GetMachineFile(string lcuName, string machineName, int pos, string mcFilePath, string lcuPath, string localPath)
+        public async Task<bool> GetMachineFile(string lcuName, string machineName, int pos, string mcFilePath, string lcuPath, string localPath, CancellationToken token)
         {
             string fileName = Path.GetFileName(mcFilePath);
             string McUser = "Administrator"; // 仮ユーザー名
@@ -334,7 +341,7 @@ namespace WpfLcuCtrlLib
             [
                 mcFilePath,
             ];
-            string ret =await LCU_Command(GetMcFile.Command(machineName, pos, McUser,mcPass, files, lcuPath));
+            string ret =await LCU_Command(GetMcFile.Command(machineName, pos, McUser,mcPass, files, lcuPath),token);
 
             if( ret == "Internal Server Error")
             {
@@ -495,10 +502,11 @@ namespace WpfLcuCtrlLib
             return true;
         }
 
-        public bool DownloadFiles(string ftpRoot, string srcRoot, List<string> files)
+        public async Task<bool> DownloadFiles(string ftpRoot, string srcRoot, List<string> files, CancellationToken token)
         {
             string user = FtpUser;
             string password = FtpPassword;
+            bool ret = true;
 
             var ftpClient = new FtpClient(Name.Split(":")[0], user, password);
 
@@ -518,7 +526,7 @@ namespace WpfLcuCtrlLib
                     System.IO.Directory.CreateDirectory(Path.GetDirectoryName(localPath));
 
                     ftpClient.DownloadFile(localPath, remotePath);
-
+                    
                     Debug.WriteLine($"Download File: {remotePath} to {localPath}");
                 }
                 catch (Exception e)
@@ -528,7 +536,7 @@ namespace WpfLcuCtrlLib
             }
             ftpClient.Disconnect();
 
-            return true;
+            return ret;
         }
 
         public void Dispose()
