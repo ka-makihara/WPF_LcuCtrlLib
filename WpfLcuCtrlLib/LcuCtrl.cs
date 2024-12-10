@@ -20,7 +20,7 @@ namespace WpfLcuCtrlLib
     {
         private static readonly HttpClient httpClient = new HttpClient();
 
-        public string Name { get; set; } = lcuName;
+        public string Name { get; set; } = lcuName; //LCUのPC名(IPアドレス)
         public string FtpUser { get; set; }
         public string FtpPassword { get; set; }
 
@@ -322,40 +322,37 @@ namespace WpfLcuCtrlLib
         /// <summary>
         /// 装置からファイルを取得する
         /// </summary>
-        /// <param name="lcuName">LCU名</param>
         /// <param name="machineName">装置名</param>
         /// <param name="pos">LogicalPos</param>
         /// <param name="mcFilePath">取得したいファイル名</param>
         /// <param name="lcuPath">LCU上の保存パス</param>
         /// <param name="localPath">取得したファイルを格納するパス</param>
-        public async Task<bool> GetMachineFile(string lcuName, string machineName, int pos, string mcFilePath, string lcuPath, string localPath, CancellationToken token)
+        public async Task<bool> GetMachineFile(string machineName, int pos, string mcFile, string lcuFile, string localPath, CancellationToken token)
         {
-            string fileName = Path.GetFileName(mcFilePath);
+            string fileName = Path.GetFileName(mcFile);
             string McUser = "Administrator"; // 仮ユーザー名
             string mcPass = "password"; // 仮パスワード
 
             // 装置(machine)からファイル(path)を取得する(結果、LCU の <FtpRoot>/MCFiles/{name} に保存されている)
             //   (装置のFTPアカウントはAdministrator/password とする　最終的にはC++  でユーザー名、パスワードを取得するようなDLLを作る)
             //mcFilePath = "Fuji/System3/Program/Peripheral/UpdateCommon.inf"; // 仮ファイル名
-            List<string> files =
-            [
-                mcFilePath,
-            ];
-            string ret =await LCU_Command(GetMcFile.Command(machineName, pos, McUser,mcPass, files, lcuPath),token);
+            List<string> files = [ mcFile ];
+            List<string> lcuFiles = [lcuFile];
+            string ret =await LCU_Command(GetMcFiles.Command(machineName, pos, McUser,mcPass, files, lcuFiles),token);
 
             if( ret == "Internal Server Error")
             {
-                Debug.WriteLine($"{lcuName}:{machineName} access Failed.");
+                Debug.WriteLine($"{Name}:{machineName} access Failed.");
                 return false;
             }
-            // LCU FTPアカウント情報を取得
+            // LCU FTPアカウント情報
             string user = FtpUser;
             string password = FtpPassword;
 
             // LCUからファイルを取得する(FTP, SFTP)
-            var ftpUrl = $"ftp://{lcuName.Split(":")[0]}/{lcuPath}" + mcFilePath;
-            
-            string remoteFilePath = lcuPath + mcFilePath;
+            var ftpUrl = $"ftp://{Name.Split(":")[0]}/{lcuFile}";
+
+            string remoteFilePath = lcuFile;
             string localFilePath = localPath + fileName;
             // ※デスクトップに保存する場合
             //string localFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), fileName);
@@ -379,8 +376,8 @@ namespace WpfLcuCtrlLib
             ftpClient.AutoConnect();
             foreach (string file in files) {
                 //フォルダ名を取り出す
-                //var path = Path.GetDirectoryName(ftpRoot + file);
-                var path = ftpRoot + file;
+                var path = Path.GetDirectoryName(ftpRoot + file);
+                //var path = ftpRoot + file;
 
                 //途中のフォルダも自動で生成してくれるFTPサーバーなら
                 //  LCU 借りてテストしてOKだったので。
@@ -468,7 +465,7 @@ namespace WpfLcuCtrlLib
         /// </summary>
         /// <param name="ftpRoot">LCUの転送先フォルダ名</param>
         /// <param name="srcRoot">転送用データのルートパス</param>
-        /// <param name="files">フォルダリスト</param>
+        /// <param name="files">ファイルリスト</param>
         /// <returns></returns>
         public bool UploadFiles(string ftpRoot,string srcRoot, List<string> files)
         {
@@ -502,6 +499,14 @@ namespace WpfLcuCtrlLib
             return true;
         }
 
+        /// <summary>
+        /// FTP によるファイルダウンロード
+        /// </summary>
+        /// <param name="ftpRoot"></param>
+        /// <param name="srcRoot"></param>
+        /// <param name="files">ファイルリスト</param>
+        /// <param name="token"></param>
+        /// <returns></returns>
         public async Task<bool> DownloadFiles(string ftpRoot, string srcRoot, List<string> files, CancellationToken token)
         {
             string user = FtpUser;

@@ -216,12 +216,12 @@ namespace WpfLcuCtrlLib
 
     }
 
-    public class GetMcFile
+    public class GetMcFiles
     {
         public McLockUnlock? mcLockUnlock { get; set; }
         public Ftp<FileGetData>? ftp { get; set; }
 
-        public static string Command(string mcName, int moduleNo, string user, string password, List<string> files, string? lcuPath = null)
+        public static string Command(string mcName, int moduleNo, string user, string password, List<string> mcFiles, List<string> lcuFiles = null)
         {
             return $"{{\"cmd\":\"GetMCFile\"," +
                         $"\"properties\":{{" +
@@ -234,7 +234,54 @@ namespace WpfLcuCtrlLib
                                 $"\"gantry\":1}}," +
                             $"\"ftp\":{{" +
                                 $"\"userName\":\"{user}\",\"password\":\"{password}\"," +
-                                $"\"data\":[" + CreateFileList(files, lcuPath) + $"]" +
+                                $"\"data\":[" + CreateFileList(mcFiles, lcuFiles) + $"]" +
+                        "}}}";
+        }
+        public static GetMcFiles? FromJson(string str)
+        {
+            GetMcFiles? file = JsonSerializer.Deserialize<GetMcFiles>(str);
+
+            return file;
+        }
+        public static string CreateFileList(List<string> mcFiles, List<string> lcuFiles = null)
+        {
+            string fileList = "";
+
+            foreach (string file in mcFiles)
+            {
+                string mcPath = file.Trim('/');
+                string lcuPath = lcuFiles[ mcFiles.IndexOf(file) ].Trim('/');
+                if (fileList != "")
+                {
+                    fileList += ",";
+                }
+                fileList += $"{{\"mcPath\":\"{mcPath}\",\"lcuPath\":\"{lcuPath}\"}}";
+            }
+            fileList = fileList.TrimEnd(',');
+
+            return fileList;
+        }
+    }
+
+     public class GetMcFile
+    {
+        public McLockUnlock? mcLockUnlock { get; set; }
+        public Ftp<FileGetData>? ftp { get; set; }
+
+        public static string Command(string mcName, int moduleNo, string user, string password, string file, string? lcuPath = null)
+        {
+            return $"{{\"cmd\":\"GetMCFile\"," +
+                        $"\"properties\":{{" +
+                            $"\"machineName\":\"{mcName}\"," +
+                            $"\"moduleNo\":{moduleNo}," +
+                            $"\"gantry\":2," +
+                            $"\"mcLockUnlock\":{{" +
+                                $"\"lock\":{{\"cmdNo\":\"0x01000071\"}}," +
+                                $"\"unlock\":{{\"cmdNo\":\"0x01000072\"}}," +
+                                $"\"gantry\":1}}," +
+                            $"\"ftp\":{{" +
+                                $"\"userName\":\"{user}\",\"password\":\"{password}\"," +
+                                $"\"data\":[" + CreateFileList(file, lcuPath) + $"]" +
                         "}}}";
         }
         public static GetMcFile? FromJson(string str)
@@ -243,21 +290,13 @@ namespace WpfLcuCtrlLib
 
             return file;
         }
-        public static string CreateFileList(List<string> files, string? path = null)
+        public static string CreateFileList(string file, string? path = null)
         {
             string fileList = "";
 
-            foreach (string file in files)
-            {
-                string mcPath = file.Trim('/');
-                string lcuPath = path + file.Trim('/');
-                if (fileList != "")
-                {
-                    fileList += ",";
-                }
-                fileList += $"{{\"mcPath\":\"{mcPath}\",\"lcuPath\":\"{lcuPath}\"}}";
-            }
-            fileList = fileList.TrimEnd(',');
+            string mcPath = file.Trim('/');
+            string lcuPath = path + Path.GetFileName(file.Trim('/'));
+            fileList = $"{{\"mcPath\":\"{mcPath}\",\"lcuPath\":\"{lcuPath}\"}}";
 
             return fileList;
         }
@@ -352,7 +391,7 @@ namespace WpfLcuCtrlLib
         /// <param name="password">FTPパスワード</param>
         /// <param name="files">ファイルリスト</param>
         /// <returns></returns>
-        public static string Command(string mcName, int moduleNo, string user, string password, List<string> files, string? path = null)
+        public static string Command(string mcName, int moduleNo, string user, string password, List<string> mcFiles, List<string> lcuFiles = null)
         {
 
             string ret = $"{{\"cmd\":\"PostMCFile\"," +
@@ -366,7 +405,7 @@ namespace WpfLcuCtrlLib
                                 $"\"gantry\":1}}," +
                             $"\"ftp\":{{" +
                                 $"\"userName\":\"{user}\",\"password\":\"{password}\"," +
-                                $"\"data\":[" + CreateFileList(files, path) + $"]" +
+                                $"\"data\":[" + CreateFileList(mcFiles, lcuFiles) + $"]" +
                         "}}}";
 
             return ret;
@@ -377,14 +416,14 @@ namespace WpfLcuCtrlLib
 
             return list;
         }
-        private static string CreateFileList(List<string> files, string? path = null)
+        private static string CreateFileList(List<string> mcFiles, List<string> lcuFiles = null)
         {
             string fileList = "";
 
-            foreach (string file in files)
+            foreach (string file in mcFiles)
             {
                 string mcPath = file.Trim('/');
-                string lcuPath = path + file.Trim('/');
+                string lcuPath = lcuFiles[ mcFiles.IndexOf(file)].Trim('/');
                 if (fileList != "")
                 {
                     fileList += ",";
