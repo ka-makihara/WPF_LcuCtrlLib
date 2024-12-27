@@ -71,14 +71,14 @@ namespace WpfLcuCtrlLib
         }
         public string GetValue(string section, string key)
         {
-            if (iniContent.ContainsKey(section)) {
-                if (iniContent[section].ContainsKey(key)) {
-                    return iniContent[section][key];
+            if (iniContent.TryGetValue(section, out Dictionary<string, string>? value)) {
+                if (value.ContainsKey(key)) {
+                    return value[key];
                 }
             }
             return "";
         }
-        public IList<string> SectionCount() => iniContent.Keys.ToList();
+        public List<string> SectionCount() => [.. iniContent.Keys];
     }
     /*
     public class UpdateInfo

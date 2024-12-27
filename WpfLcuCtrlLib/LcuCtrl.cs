@@ -228,8 +228,8 @@ namespace WpfLcuCtrlLib
 					str = await result.Content.ReadAsStringAsync();
 				}
 
-				Debug.WriteLine(result.StatusCode);
-				Debug.WriteLine(str);
+				//Debug.WriteLine(result.StatusCode);
+				//Debug.WriteLine(str);
 
 				ret = str;
 			}
@@ -265,10 +265,12 @@ namespace WpfLcuCtrlLib
 			{
 				return null;
 			}
+			/*
 			foreach (var item in list)
 			{
 				Debug.WriteLine($"Drive: {item.driveLetter}, Total: {item.total}, Use: {item.use}, Free: {item.free}");
 			}
+			*/
 			return list;
 		}
 
@@ -510,6 +512,118 @@ namespace WpfLcuCtrlLib
 			return true;
 		}
 
+		/// <summary>
+		///  FTP によるファイルアップロード2
+		/// </summary>
+		/// <param name="ftpRoot">FTP先のパス</param>
+		/// <param name="srcRoot">転送元のルートパス</param>
+		/// <param name="files">ファイルリスト(path, file1, file2)[]</param>
+		/// <returns></returns>
+		public bool UploadFiles2(string ftpRoot,string srcRoot, List<(string?,string,string)> files)
+		{
+			string user = FtpUser;
+			string password = FtpPassword;
+
+			var ftpClient = new FtpClient(Name.Split(":")[0], user, password);
+
+			ftpClient.AutoConnect();
+			foreach ((string path, string f1, string f2) file in files)
+			{
+				try
+				{
+					var remotePath = ftpRoot + file.path + "\\" + file.f1;
+					var localPath = srcRoot + file.path + '/' + file.f1;
+
+					localPath = localPath.Replace("/", "\\");
+					remotePath = remotePath.Replace("\\","/");
+
+					ftpClient.UploadFile(localPath, remotePath);
+
+					Debug.WriteLine($"Upload File: {localPath} to {remotePath}");
+
+					if( file.f2 != "" )
+					{
+						remotePath = ftpRoot + file.path + "\\" + file.f2;
+						localPath = srcRoot + file.path + '/' + file.f2;
+
+						localPath = localPath.Replace("/", "\\");
+						remotePath = remotePath.Replace("\\","/");
+
+						ftpClient.UploadFile(localPath, remotePath);
+						Debug.WriteLine($"Upload File: {localPath} to {remotePath}");
+					}
+				}
+				catch(Exception e) {
+					Debug.WriteLine(e.Message);
+					break;
+				}
+			}
+			ftpClient.Disconnect();
+
+			return true;
+		}
+
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="folders"></param>
+		/// <param name="lcuRoot"></param>
+		/// <returns></returns>
+		public bool UploadFiles3(List<string> folders, string lcuRoot)
+		{
+			string user = FtpUser;
+			string password = FtpPassword;
+
+			var ftpClient = new FtpClient(Name.Split(":")[0], user, password);
+
+			ftpClient.AutoConnect();
+			foreach (string folder in folders)
+			{
+				try
+				{
+					ftpClient.UploadDirectory(folder, lcuRoot, FtpFolderSyncMode.Update, FtpRemoteExists.Overwrite);
+				}
+				catch (Exception e)
+				{
+					break;
+				}
+			}
+			ftpClient.Disconnect();
+			return true;
+		}
+
+		/// <summary>
+		///  (指定フォルダに含まれるファイルをすべてLCU にファイルをアップロードする(フォルダ構造を維持する)
+		/// </summary>
+		/// <param name="folders">フォルダリスト</param>
+		/// <param name="lcuRoot">LCUのFTPルートパス</param>
+		/// <param name="srcRoot">元フォルダからLCUフォルダへ変換する起点フォルダ</param>
+		/// <returns></returns>
+		public bool UploadFilesWithFolder(List<string> folders, string lcuRoot, string srcRoot)
+		{
+			string user = FtpUser;
+			string password = FtpPassword;
+
+			var ftpClient = new FtpClient(Name.Split(":")[0], user, password);
+
+			ftpClient.AutoConnect();
+			foreach (string folder in folders)
+			{
+				// 元フォルダからLCUフォルダへ変換する
+				string lcuPath = lcuRoot + folder[srcRoot.Length..];
+				try
+				{
+					// folder 下の全ファイルを lcuPath フォルダへアップロードする(フォルダがない場合は作成してくれる)
+					ftpClient.UploadDirectory(folder, lcuPath, FtpFolderSyncMode.Update, FtpRemoteExists.Overwrite);
+				}
+				catch (Exception e)
+				{
+					break;
+				}
+			}
+			ftpClient.Disconnect();
+			return true;
+		}
 		/// <summary>
 		/// FTP によるファイルダウンロード
 		/// </summary>

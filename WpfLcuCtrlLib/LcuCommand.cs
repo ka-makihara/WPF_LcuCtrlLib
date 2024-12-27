@@ -422,13 +422,16 @@ namespace WpfLcuCtrlLib
 
 			foreach (string file in mcFiles)
 			{
-				string mcPath = file.Trim('/');
-				string lcuPath = lcuFiles[ mcFiles.IndexOf(file)].Trim('/');
-				if (fileList != "")
+				if (file != "")
 				{
-					fileList += ",";
+					string mcPath = file.Trim('/');
+					string lcuPath = lcuFiles[mcFiles.IndexOf(file)].Trim('/');
+					if (fileList != "")
+					{
+						fileList += ",";
+					}
+					fileList += $"{{\"mcPath\":\"{mcPath}\",\"lcuPath\":\"{lcuPath}\",\"overwrite\":1}}";
 				}
-				fileList += $"{{\"mcPath\":\"{mcPath}\",\"lcuPath\":\"{lcuPath}\",\"overwrite\":1}}";
 			}
 			fileList = fileList.TrimEnd(',');
 
