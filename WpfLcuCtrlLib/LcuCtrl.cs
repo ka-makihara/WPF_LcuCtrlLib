@@ -148,8 +148,7 @@ namespace WpfLcuCtrlLib
 		/// <param name="username"></param>
 		/// <param name="password"></param>
 		/// <param name="localFilePath"></param>
-		/// <param name="remoteFilePath"></param>
-		public static bool FTP_Download(string ftpUrl, string username, string password, string localFilePath, string remoteFilePath)
+		public static bool FTP_Download(string ftpUrl, string username, string password, string localFilePath)
 		{
 			var request = (FtpWebRequest)WebRequest.Create(ftpUrl);
 
@@ -159,26 +158,33 @@ namespace WpfLcuCtrlLib
 			request.UsePassive = true;
 			request.KeepAlive = false;
 
-			//FTPサーバからファイルをダウンロードするためのStreamを取得
-			using (var response = (FtpWebResponse)request.GetResponse())
-			using (var responseStream = response.GetResponseStream())
-			using (var fs = new FileStream(localFilePath, FileMode.Create))
+			try
 			{
-				responseStream.CopyTo(fs);
-				Debug.WriteLine($"Download File Complete, status {response.StatusDescription}");
+				//FTPサーバからファイルをダウンロードするためのStreamを取得
+				using (var response = (FtpWebResponse)request.GetResponse())
+				using (var responseStream = response.GetResponseStream())
+				using (var fs = new FileStream(localFilePath, FileMode.Create))
+				{
+					responseStream.CopyTo(fs);
+					Debug.WriteLine($"Download File Complete, status {response.StatusDescription}");
+				}
+				return true;
 			}
-			return true;
+			catch (WebException e)
+			{
+				Debug.WriteLine($"WebException: {e.Message}");
+				return false;
+			}
 		}
 
 		/// <summary>
 		/// FTP Upload
 		/// </summary>
-		/// <param name="ftpUrl"></param>
-		/// <param name="username"></param>
-		/// <param name="password"></param>
-		/// <param name="localFilePath"></param>
-		/// <param name="remoteFilePath"></param>
-		public static void FTP_Upload(string ftpUrl, string username, string password, string localFilePath, string remoteFilePath)
+		/// <param name="ftpUrl">FTP URL</param>
+		/// <param name="username">User Name</param>
+		/// <param name="password">PassWord</param>
+		/// <param name="localFilePath">local File</param>
+		public static bool FTP_Upload(string ftpUrl, string username, string password, string localFilePath)
 		{
 			var request = (FtpWebRequest)WebRequest.Create(ftpUrl);
 
@@ -188,14 +194,25 @@ namespace WpfLcuCtrlLib
 			request.UsePassive = true;
 			request.KeepAlive = false;
 
-			//FTPサーバにファイルをアップロードするためのStreamを取得
-			using (var fs = new FileStream(localFilePath, FileMode.Open))
-			using (var requestStream = request.GetRequestStream()) {
-				fs.CopyTo(requestStream);
-			}
+			try
+			{
+				//FTPサーバにファイルをアップロードするためのStreamを取得
+				using (var fs = new FileStream(localFilePath, FileMode.Open))
+				using (var requestStream = request.GetRequestStream())
+				{
+					fs.CopyTo(requestStream);
+				}
 
-			using (var response = (FtpWebResponse)request.GetResponse()) {
-				Debug.WriteLine($"Upload File Complete, status {response.StatusDescription}");
+				using (var response = (FtpWebResponse)request.GetResponse())
+				{
+					Debug.WriteLine($"Upload File Complete, status {response.StatusDescription}");
+				}
+				return true;
+			}
+			catch (WebException e)
+			{
+				Debug.WriteLine($"WebException: {e.Message}");
+				return false;
 			}
 		}
 #pragma warning restore SYSLIB0014
@@ -363,15 +380,55 @@ namespace WpfLcuCtrlLib
 			string password = FtpPassword;
 
 			// LCUからファイルを取得する(FTP, SFTP)
-			var ftpUrl = $"ftp://{Name.Split(":")[0]}/{lcuFile}";
+			var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{pos}/{lcuFile}";
 
-			string remoteFilePath = lcuFile;
 			string localFilePath = localPath + fileName;
 			// ※デスクトップに保存する場合
 			//string localFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), fileName);
 
-			return FTP_Download(ftpUrl, user, password, localFilePath, remoteFilePath);
+			return FTP_Download(ftpUrl, user, password, localFilePath);
  
+		}
+
+		/// <summary>
+		/// 装置へファイルを転送する
+		/// </summary>
+		/// <param name="machineName">装置名</param>
+		/// <param name="pos">LogicalPos</param>
+		/// <param name="mcFile">取得したいファイル名</param>
+		/// <param name="lcuFile">LCU上の保存パス</param>
+		/// <param name="localPath">取得したファイルを格納するパス</param>
+		public async Task<bool> PutMachineFile(string machineName, int pos, string mcFile, string lcuFile, string localPath, CancellationToken? token=null)
+		{
+			string fileName = Path.GetFileName(mcFile);
+			string McUser = "Administrator"; // 仮ユーザー名
+			string mcPass = "password"; // 仮パスワード
+
+			// LCU FTPアカウント情報
+			string user = FtpUser;
+			string password = FtpPassword;
+
+			// LCUへファイルを転送する(FTP, SFTP)
+			var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{pos}/{lcuFile}";
+
+			string localFilePath = localPath + fileName;
+
+			bool ret = FTP_Upload(ftpUrl, user, password, localFilePath);
+			if(ret == false)
+			{
+				return false;
+			}
+
+			List<string> files = [ mcFile ];
+			List<string> lcuFiles = [lcuFile];
+			string cmdRet = await LCU_Command(PostMcFile.Command(machineName, pos, McUser,mcPass, files, lcuFiles),token);
+
+			if( cmdRet == "Internal Server Error")
+			{
+				Debug.WriteLine($"{Name}:{machineName} access Failed.");
+				return false;
+			}
+			return true;
 		}
 
 		/// <summary>
