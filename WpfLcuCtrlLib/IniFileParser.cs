@@ -38,14 +38,19 @@ namespace WpfLcuCtrlLib
         }
         public IniFileParser(string path)
         {
-            iniContent = new Dictionary<string, Dictionary<string, string>>();
+			if(System.IO.File.Exists(path) == false)
+			{
+				return;
+			}
+
+			iniContent = new Dictionary<string, Dictionary<string, string>>();
             string[] lines = System.IO.File.ReadAllLines(path);
             string currentSection = "";
 
             foreach (string line in lines) {
                 string lineTrimmed = line.Trim();
 
-                if( string.IsNullOrEmpty(lineTrimmed) || lineTrimmed.StartsWith(";")) {
+                if( string.IsNullOrEmpty(lineTrimmed) || lineTrimmed.StartsWith(";") || lineTrimmed.StartsWith("#") ) {
                     // 空行またはコメント行の場合はスキップ
                     continue;
                 }

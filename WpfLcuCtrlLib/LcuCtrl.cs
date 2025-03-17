@@ -16,13 +16,14 @@ using Reactive.Bindings;
 
 namespace WpfLcuCtrlLib
 {
-	public partial class LcuCtrl(string lcuName):IDisposable
+	public partial class LcuCtrl(string lcuName, int id):IDisposable
 	{
 		private static readonly HttpClient httpClient = new HttpClient();
 
 		public string Name { get; set; } = lcuName; //LCUのPC名(IPアドレス)
 		public string FtpUser { get; set; }
 		public string FtpPassword { get; set; }
+		public int Id { get; set; } = id;
 
 		/// <summary>
 		///  SFTP Download
@@ -380,7 +381,8 @@ namespace WpfLcuCtrlLib
 			string password = FtpPassword;
 
 			// LCUからファイルを取得する(FTP, SFTP)
-			var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{pos}/{lcuFile}";
+			var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{Id}/{lcuFile}";
+			//var ftpUrl = $"ftp://{Name.Split(":")[0]}/{lcuFile}";
 
 			string localFilePath = localPath + fileName;
 			// ※デスクトップに保存する場合
@@ -715,10 +717,18 @@ namespace WpfLcuCtrlLib
 					ftpClient.DownloadFile(localPath, remotePath);
 					
 					Debug.WriteLine($"Download File: {remotePath} to {localPath}");
+
+					if( token.IsCancellationRequested)
+					{
+						ret = false;
+						break;
+					}
 				}
 				catch (Exception e)
 				{
 					Debug.WriteLine(e.Message);
+					ret = false;
+					break;
 				}
 			}
 			ftpClient.Disconnect();

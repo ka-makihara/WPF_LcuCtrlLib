@@ -438,4 +438,31 @@ namespace WpfLcuCtrlLib
 			return fileList;
 		}
 	}
+
+
+	public class GetDir
+	{
+		public string? type { get; set; }
+		public string? name { get; set; }
+		public string? update { get; set; }
+
+		public static List<GetDir>? FromJson(string str)
+		{
+			List<GetDir>? list = JsonSerializer.Deserialize<List<GetDir>>(str);
+
+			return list;
+		}
+		public static string Command(string path)
+		{
+			return $"{{\"cmd\":\"GetDir\",\"properties\":{{\"path\":\"{path}\"}}}}";
+		}
+	}
+
+	public class SetLcu
+	{
+		public static string Command(int id)
+		{
+			return $"{{\"cmd\":\"SetLCU\",\"properties\":{{\"Name\":\"LCU_{id}\"}}}}";
+		}
+	}
 }
