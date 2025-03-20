@@ -376,6 +376,17 @@ namespace WpfLcuCtrlLib
 				Debug.WriteLine($"{Name}:{machineName} access Failed.");
 				return false;
 			}
+
+			GetMcFile retMsg = GetMcFile.FromJson(ret);
+			if (retMsg == null)
+			{
+				return false;
+			}
+			if( retMsg.HasError() )
+			{
+				return false;
+			}
+
 			// LCU FTPアカウント情報
 			string user = FtpUser;
 			string password = FtpPassword;
@@ -388,7 +399,10 @@ namespace WpfLcuCtrlLib
 			// ※デスクトップに保存する場合
 			//string localFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), fileName);
 
-			return FTP_Download(ftpUrl, user, password, localFilePath);
+			bool bRet = FTP_Download(ftpUrl, user, password, localFilePath);
+
+			//return FTP_Download(ftpUrl, user, password, localFilePath);
+			return bRet;
  
 		}
 

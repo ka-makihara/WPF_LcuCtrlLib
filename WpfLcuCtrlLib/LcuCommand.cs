@@ -263,7 +263,7 @@ namespace WpfLcuCtrlLib
 		}
 	}
 
-	 public class GetMcFile
+	public class GetMcFile
 	{
 		public McLockUnlock? mcLockUnlock { get; set; }
 		public Ftp<FileGetData>? ftp { get; set; }
@@ -299,6 +299,17 @@ namespace WpfLcuCtrlLib
 			fileList = $"{{\"mcPath\":\"{mcPath}\",\"lcuPath\":\"{lcuPath}\"}}";
 
 			return fileList;
+		}
+		public bool HasError()
+		{
+			if (ftp == null) return true;
+			if (ftp.data == null) return true;
+
+			foreach (var data in ftp.data)
+			{
+				if (data.errorCode == null ||  data.errorCode.Length != 0) return true;
+			}
+			return false;
 		}
 	}
 
