@@ -13,11 +13,17 @@ using Renci.SshNet;
 
 using FluentFTP;
 using Reactive.Bindings;
+using System.Runtime.InteropServices;
 
 namespace WpfLcuCtrlLib
 {
 	public partial class LcuCtrl(string lcuName, int id):IDisposable
 	{
+		[DllImport("mcAccount.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+		static extern int getMcUser(StringBuilder s, Int32 len);
+		[DllImport("mcAccount.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+		static extern int getMcPass(StringBuilder s, Int32 len);
+
 		private static readonly HttpClient httpClient = new HttpClient();
 
 		public string Name { get; set; } = lcuName; //LCUのPC名(IPアドレス)
@@ -358,17 +364,24 @@ namespace WpfLcuCtrlLib
 		/// <param name="mcFilePath">取得したいファイル名</param>
 		/// <param name="lcuPath">LCU上の保存パス</param>
 		/// <param name="localPath">取得したファイルを格納するパス</param>
-		public async Task<bool> GetMachineFile(string machineName, int pos, string mcFile, string lcuFile, string localPath, CancellationToken? token=null)
+		public async Task<bool> GetMachineFiles(string machineName, int pos, List<string> mcFile, List<string> lcuFile, string localPath, CancellationToken? token=null)
 		{
-			string fileName = Path.GetFileName(mcFile);
-			string McUser = "Administrator"; // 仮ユーザー名
-			string mcPass = "password"; // 仮パスワード
+			//string fileName = Path.GetFileName(mcFile);
+			//string McUser = "Administrator"; // 仮ユーザー名
+			//string mcPass = "FjAdmin"; // 仮パスワード
+
+			StringBuilder sb = new StringBuilder(1024);
+			Int32 len = 0;
+			len = getMcUser(sb, sb.Capacity);
+			string McUser = sb.ToString();
+			len = getMcPass(sb, sb.Capacity);
+			string mcPass = sb.ToString();
 
 			// 装置(machine)からファイル(path)を取得する(結果、LCU の <FtpRoot>/MCFiles/{name} に保存されている)
 			//   (装置のFTPアカウントはAdministrator/password とする　最終的にはC++  でユーザー名、パスワードを取得するようなDLLを作る)
 			//mcFilePath = "Fuji/System3/Program/Peripheral/UpdateCommon.inf"; // 仮ファイル名
-			List<string> files = [ mcFile ];
-			List<string> lcuFiles = [lcuFile];
+			List<string> files = mcFile;
+			List<string> lcuFiles = lcuFile;
 			string ret =await LCU_Command(GetMcFiles.Command(machineName, pos, McUser,mcPass, files, lcuFiles),token);
 
 			if( ret == "Internal Server Error")
@@ -384,6 +397,17 @@ namespace WpfLcuCtrlLib
 			}
 			if( retMsg.HasError() )
 			{
+				var ec = retMsg.ftp.data[0].errorCode;
+				bool success = int.TryParse(ec, System.Globalization.NumberStyles.HexNumber, null, out int numValue);
+				if (success)
+				{
+					Debug.WriteLine($"{retMsg.ftp.data[0].errorMessage} {ec}");
+				}
+				else
+				{
+					Debug.WriteLine($"{retMsg.ftp.data[0].errorMessage}");
+				}
+				
 				return false;
 			}
 
@@ -391,19 +415,30 @@ namespace WpfLcuCtrlLib
 			string user = FtpUser;
 			string password = FtpPassword;
 
-			// LCUからファイルを取得する(FTP, SFTP)
-			var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{Id}/{lcuFile}";
-			//var ftpUrl = $"ftp://{Name.Split(":")[0]}/{lcuFile}";
+			//string localFilePath = localPath + fileName;
+			string LcuUUID_Path = "";
 
-			string localFilePath = localPath + fileName;
-			// ※デスクトップに保存する場合
-			//string localFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), fileName);
+			// LCUからファイルを取得する(FTP, SFTP)(※現在は1ファイルづつGetMCFile しているので、ftp.data が複数になることは無いが)
+			foreach(var path in retMsg.ftp.data)
+			{
+				string localFilePath = localPath + Path.GetFileName(path.mcPath);
+				//var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{Id}/{path.lcuPath}";
+				var ftpUrl = $"ftp://{Name.Split(":")[0]}/MCFiles/{path.lcuPath}";
+				if( FTP_Download(ftpUrl, user, password, localFilePath) == false )
+				{
+					return false;
+				}
+				LcuUUID_Path = path.lcuPath.Split('/')[0];
+			}
+			//コマンド毎にUUIDが変わるので、コマンド終了時にフォルダを削除する
+			ClearFtpFolders("/MCFiles/" + LcuUUID_Path);
 
-			bool bRet = FTP_Download(ftpUrl, user, password, localFilePath);
+			return true;
+		}
 
-			//return FTP_Download(ftpUrl, user, password, localFilePath);
-			return bRet;
- 
+		public async Task<bool> GetMachineFile(string machineName, int pos, string mcFile, string lcuFile, string localPath, CancellationToken? token = null)
+		{
+			return await GetMachineFiles(machineName, pos, [mcFile], [lcuFile], localPath, token);
 		}
 
 		/// <summary>
@@ -417,15 +452,23 @@ namespace WpfLcuCtrlLib
 		public async Task<bool> PutMachineFile(string machineName, int pos, string mcFile, string lcuFile, string localPath, CancellationToken? token=null)
 		{
 			string fileName = Path.GetFileName(mcFile);
-			string McUser = "Administrator"; // 仮ユーザー名
-			string mcPass = "password"; // 仮パスワード
+			//string McUser = "Administrator"; // 仮ユーザー名
+			//string mcPass = "password"; // 仮パスワード
+
+			StringBuilder sb = new StringBuilder(1024);
+			Int32 len = 0;
+			len = getMcUser(sb, sb.Capacity);
+			string McUser = sb.ToString();
+			len = getMcPass(sb, sb.Capacity);
+			string mcPass = sb.ToString();
 
 			// LCU FTPアカウント情報
 			string user = FtpUser;
 			string password = FtpPassword;
 
 			// LCUへファイルを転送する(FTP, SFTP)
-			var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{pos}/{lcuFile}";
+			//var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{pos}/{lcuFile}";
+			var ftpUrl = $"ftp://{Name.Split(":")[0]}/{lcuFile}";
 
 			string localFilePath = localPath + fileName;
 
@@ -540,6 +583,7 @@ namespace WpfLcuCtrlLib
 					ftpClient.DeleteFile(file.FullName);
 				}
 			}
+			ftpClient.DeleteDirectory(startFolder);
 
 			ftpClient.Disconnect();
 

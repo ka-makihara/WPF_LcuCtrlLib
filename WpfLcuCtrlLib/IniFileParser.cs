@@ -83,7 +83,56 @@ namespace WpfLcuCtrlLib
             }
             return "";
         }
+
+		public string? GetSectionByValue(string key, string value)
+		{
+			List<string> sec = SectionCount();
+			foreach (string s in sec)
+			{
+				if (GetValue(s, key).Equals(value, StringComparison.OrdinalIgnoreCase))
+				{
+					return s;
+				}
+			}
+			return null;
+		}
+
         public List<string> SectionCount() => [.. iniContent.Keys];
+
+		public List<(string name, string path, string fuserPath)> GetPathList()
+		{
+			List<string> sec = SectionCount();
+			List<(string, string, string)> pathList = [];
+			foreach (string s in sec)
+			{
+				pathList.Add( (s, GetValue(s,"Path"), GetValue(s,"FuserPath")) );
+			}
+			return pathList;
+		}
+
+		public string? GetSectionContainsPath(string path)
+		{
+			List<string> sec = SectionCount();
+			foreach (string s in sec)
+			{
+				string? pathValue = GetValue(s, "Path").Split("Peripheral")[1];
+
+				if ( pathValue.Equals(path, StringComparison.OrdinalIgnoreCase))
+				{
+					return s;
+				}
+				string? fuser = GetValue(s, "FuserPath");
+				if ( fuser != "" )
+				{
+					string? pathValue2 = fuser.Split("Peripheral")[1];
+					if (pathValue2.Equals(path, StringComparison.OrdinalIgnoreCase))
+					{
+						return s;
+					}
+				}
+			}
+			return null;
+		}
     }
     /*
     public class UpdateInfo

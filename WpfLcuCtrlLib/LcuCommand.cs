@@ -128,7 +128,7 @@ namespace WpfLcuCtrlLib
 			string pass = "";
 			SymmetricCryptography.Cryptography.DecryptUserPassword(user, passCode, ref pass);
 
-			if (pass == "") pass = passCode;
+			if (pass == "") pass = passCode;　//復号化失敗は変換なし(仮想LCUなどはそのまま)
 
 			return pass;
 		}
