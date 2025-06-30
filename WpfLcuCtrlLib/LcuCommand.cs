@@ -300,14 +300,20 @@ namespace WpfLcuCtrlLib
 
 			return fileList;
 		}
-		public bool HasError()
+		public bool HasError(ref int idx)
 		{
+			int nn = 0;
 			if (ftp == null) return true;
 			if (ftp.data == null) return true;
 
 			foreach (var data in ftp.data)
 			{
-				if (data.errorCode == null ||  data.errorCode.Length != 0) return true;
+				if (data.errorCode == null || data.errorCode.Length != 0)
+				{
+					idx = nn; //エラーのあるファイルのインデックスを返す
+					return true;
+				}
+				nn++;
 			}
 			return false;
 		}
@@ -421,9 +427,10 @@ namespace WpfLcuCtrlLib
 
 			return ret;
 		}
-		public static GetMcFileList? FromJson(string str)
+		public static PostMcFile? FromJson(string str)
 		{
-			GetMcFileList? list = JsonSerializer.Deserialize<GetMcFileList>(str);
+			//GetMcFileList? list = JsonSerializer.Deserialize<GetMcFileList>(str);
+			PostMcFile? list = JsonSerializer.Deserialize<PostMcFile>(str);
 
 			return list;
 		}
@@ -447,6 +454,23 @@ namespace WpfLcuCtrlLib
 			fileList = fileList.TrimEnd(',');
 
 			return fileList;
+		}
+		public bool HasError(ref int idx)
+		{
+			int nn = 0;
+			if (ftp == null) return true;
+			if (ftp.data == null) return true;
+
+			foreach (var data in ftp.data)
+			{
+				if (data.errorCode == null || data.errorCode.Length != 0)
+				{
+					idx = nn; //エラーのあるファイルのインデックスを返す
+					return true;
+				}
+				nn++;
+			}
+			return false;
 		}
 	}
 
