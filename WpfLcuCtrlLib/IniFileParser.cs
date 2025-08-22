@@ -62,7 +62,7 @@ namespace WpfLcuCtrlLib
                 else {
                     string[] keyValuePair = line.Split('=');
                     if (keyValuePair.Length == 2) {
-                        if (keyValuePair[1].Contains(":") == false)
+                        if (keyValuePair[1].Contains(':') == false)
                         {
                             iniContent[currentSection][keyValuePair[0]] = keyValuePair[1];
                         }
@@ -74,7 +74,18 @@ namespace WpfLcuCtrlLib
                 }
             }
         }
-        public string GetValue(string section, string key)
+		public void SetValue(string section, string key, string value)
+		{
+			if (iniContent.ContainsKey(section))
+			{
+				iniContent[section][key] = value;
+			}
+			else
+			{
+				iniContent[section] = new Dictionary<string, string> { { key, value } };
+			}
+		}
+		public string GetValue(string section, string key)
         {
             if (iniContent.TryGetValue(section, out Dictionary<string, string>? value)) {
                 if (value.ContainsKey(key)) {

@@ -14,6 +14,7 @@ using Renci.SshNet;
 using FluentFTP;
 using Reactive.Bindings;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace WpfLcuCtrlLib
 {
@@ -366,7 +367,7 @@ namespace WpfLcuCtrlLib
 		/// <param name="localPath">取得したファイルを格納するパス</param>
 		public async Task<bool> GetMachineFiles(string machineName, int pos, List<string> mcFile, List<string> lcuFile, string localPath, CancellationToken token)
 		{
-			int errIdx = 0; // エラーコードのインデックス
+			int errIdx = -1; // エラーコードのインデックス
 
 			StringBuilder sb = new StringBuilder(1024);
 			Int32 len = 0;
@@ -375,7 +376,7 @@ namespace WpfLcuCtrlLib
 			len = getMcPass(sb, sb.Capacity);
 			string mcPass = sb.ToString();
 
-			// 装置(machine)からファイル(path)を取得する(結果、LCU の <FtpRoot>/MCFiles/{name} に保存されている)
+			// 装置(machine)からファイル(path)を取得する(結果、LCU の <FtpRoot>/MCFiles/(UUID)/{name} に保存されている)
 			List<string> files = mcFile;
 			List<string> lcuFiles = lcuFile;
 			string ret =await LCU_Command(GetMcFiles.Command(machineName, pos, McUser,mcPass, files, lcuFiles),token);
@@ -402,15 +403,19 @@ namespace WpfLcuCtrlLib
 
 			// LCUからファイルを取得する(FTP, SFTP)
 			List<(string?, string?)> ftpData = retMsg.ftp.data
-				.Where(x => x.errorCode == "" && x.mcPath != null && x.lcuPath != null)
+				.Where(x => x.errorCode == "" && x.errorMessage == "" && x.mcPath != null && x.lcuPath != null)
 				.Select(x => (x.mcPath, x.lcuPath)).ToList();
 
-			int gc = await DownLoadFiles(Name, FtpUser, FtpPassword, ftpData, localPath, token);
+			if (ftpData.Count != 0)
+			{
+				await DownLoadFiles(Name, FtpUser, FtpPassword, ftpData, localPath, token);
+			}
 
 			//コマンド毎にUUIDが変わるので、コマンド終了時にフォルダを削除する
 			await ClearFtpFolders("/MCFiles/" + LcuUUID_Path, token);
 
-			return true;
+			//return true;
+			return (errIdx == -1);
 		}
 
 		public async Task<int> DownLoadFiles(string host, string user, string password, List<(string?,string?)> files, string localPath, CancellationToken token)
@@ -464,8 +469,7 @@ namespace WpfLcuCtrlLib
 		public async Task<bool> PutMachineFile(string machineName, int pos, string mcFile, string lcuFile, string localPath, CancellationToken? token=null)
 		{
 			string fileName = Path.GetFileName(mcFile);
-			//string McUser = "Administrator"; // 仮ユーザー名
-			//string mcPass = "password"; // 仮パスワード
+			int errIdx = -1; // エラーコードのインデックス
 
 			StringBuilder sb = new StringBuilder(1024);
 			Int32 len = 0;
@@ -497,6 +501,22 @@ namespace WpfLcuCtrlLib
 			if( cmdRet == "Internal Server Error")
 			{
 				Debug.WriteLine($"{Name}:{machineName} access Failed.");
+				return false;
+			}
+			PostMcFile? retData = JsonSerializer.Deserialize<PostMcFile>(cmdRet);
+			if (retData != null && retData.HasError(ref errIdx))
+			{
+				if( retData.ftp.data == null)
+				{
+					Debug.WriteLine("FTP data is null.");
+					return false;
+				}
+				if( retData.ftp.data.Count <= errIdx)
+				{
+					Debug.WriteLine("FTP data length is less than error index.");
+					return false;
+				}
+				Debug.WriteLine($"{retData.ftp.data[errIdx].mcPath}={retData.ftp.data[errIdx].errorMessage} errCode={retData.ftp.data[errIdx].errorCode}");
 				return false;
 			}
 			return true;

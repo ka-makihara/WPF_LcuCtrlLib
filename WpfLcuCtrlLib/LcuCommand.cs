@@ -397,7 +397,7 @@ namespace WpfLcuCtrlLib
 	public class PostMcFile
 	{
 		public McLockUnlock? mcLockUnlock { get; set; }
-		public Ftp<FileListData>? ftp { get; set; }
+		public Ftp<FileListData> ftp { get; set; }
 
 		/// <summary>
 		/// 
