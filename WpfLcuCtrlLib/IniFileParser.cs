@@ -25,37 +25,42 @@ namespace WpfLcuCtrlLib
         {
             var member = e.Body as MemberExpression;
             if (member == null) {
-                //throw new ArgumentException();
                 return "";
             }
             return member.Member.Name;
         }
         public static string GetIniValue(string path, string section, string key)
         {
-            StringBuilder sb = new StringBuilder(1024);
-            GetPrivateProfileString(section, key, "", sb, sb.Capacity, path);
+            StringBuilder sb = new(1024);
+			_ = GetPrivateProfileString(section, key, "", sb, sb.Capacity, path);
             return sb.ToString();
         }
+
+		/// <summary>
+		///  コンストラクタ
+		/// </summary>
+		/// <param name="path">iniファイルのパス</param>
         public IniFileParser(string path)
         {
+			iniContent = [];
+
 			if(System.IO.File.Exists(path) == false)
 			{
 				return;
 			}
 
-			iniContent = new Dictionary<string, Dictionary<string, string>>();
             string[] lines = System.IO.File.ReadAllLines(path);
             string currentSection = "";
 
             foreach (string line in lines) {
                 string lineTrimmed = line.Trim();
 
-                if( string.IsNullOrEmpty(lineTrimmed) || lineTrimmed.StartsWith(";") || lineTrimmed.StartsWith("#") ) {
+                if( string.IsNullOrEmpty(lineTrimmed) || lineTrimmed.StartsWith(';') || lineTrimmed.StartsWith('#') ) {
                     // 空行またはコメント行の場合はスキップ
                     continue;
                 }
 
-                if (line.StartsWith("[") && line.EndsWith("]")) {
+                if (line.StartsWith('[') && line.EndsWith(']')) {
                     currentSection = line.Substring(1, line.Length - 2);
                     iniContent[currentSection] = new Dictionary<string, string>();
                 }
@@ -74,6 +79,13 @@ namespace WpfLcuCtrlLib
                 }
             }
         }
+
+		/// <summary>
+		///  iniFile のセクション、キー、値を設定します。
+		/// </summary>
+		/// <param name="section">セクション名</param>
+		/// <param name="key">キー名</param>
+		/// <param name="value">値</param>
 		public void SetValue(string section, string key, string value)
 		{
 			if (iniContent.ContainsKey(section))
@@ -85,6 +97,13 @@ namespace WpfLcuCtrlLib
 				iniContent[section] = new Dictionary<string, string> { { key, value } };
 			}
 		}
+
+		/// <summary>
+		///  iniFile のセクション、キーから値を取得します。
+		/// </summary>
+		/// <param name="section">セクション名</param>
+		/// <param name="key">キー名</param>
+		/// <returns>キーに設定された値</returns>
 		public string GetValue(string section, string key)
         {
             if (iniContent.TryGetValue(section, out Dictionary<string, string>? value)) {
@@ -95,32 +114,47 @@ namespace WpfLcuCtrlLib
             return "";
         }
 
-		public string? GetSectionByValue(string key, string value)
+		/// <summary>
+		///  キーと値からセクション名を取得します。
+		/// </summary>
+		/// <param name="key">キー名</param>
+		/// <param name="value">値</param>
+		/// <returns>セクション名のリスト</returns>
+		public List<string> GetSectionByValue(string key, string value)
 		{
-			List<string> sec = SectionCount();
-			foreach (string s in sec)
-			{
-				if (GetValue(s, key).Equals(value, StringComparison.OrdinalIgnoreCase))
-				{
-					return s;
-				}
-			}
-			return null;
+			// key, value に一致するセクションが複数ある場合を考慮して List<string> を返すように変更
+			//  (例: Copla_FW_FPGA, Copla_FW_FPGA_VER3 => Path=が同値)
+
+			return [.. iniContent
+				.Where(section => section.Value.TryGetValue(key, out var v) && v.Equals(value, StringComparison.OrdinalIgnoreCase))
+				.Select(section => section.Key)];
 		}
 
-        public List<string> SectionCount() => [.. iniContent.Keys];
+		/// <summary>
+		///  iniFile のセクション数を取得します。
+		/// </summary>
+		/// <returns></returns>
+		public List<string> SectionCount() => [.. iniContent.Keys];
 
+		/// <summary>
+		///  キー値に Path, FuserPath を持つセクション名、Path、FuserPath のリストを取得します。
+		/// </summary>
+		/// <returns></returns>
 		public List<(string name, string path, string fuserPath)> GetPathList()
 		{
-			List<string> sec = SectionCount();
-			List<(string, string, string)> pathList = [];
-			foreach (string s in sec)
-			{
-				pathList.Add( (s, GetValue(s,"Path"), GetValue(s,"FuserPath")) );
-			}
-			return pathList;
+			return [.. iniContent
+				.Select(section => (
+					name: section.Key,
+					path: section.Value.TryGetValue("Path", out var p) ? p : "",
+					fuserPath: section.Value.TryGetValue("FuserPath", out var f) ? f : ""
+				))];
 		}
 
+		/// <summary>
+		///  Path または FuserPath に指定されたパスを含むセクション名を取得します。
+		/// </summary>
+		/// <param name="path">検索したいパス</param>
+		/// <returns>セクション名またはnull</returns>
 		public string? GetSectionContainsPath(string path)
 		{
 			List<string> sec = SectionCount();
@@ -145,13 +179,4 @@ namespace WpfLcuCtrlLib
 			return null;
 		}
     }
-    /*
-    public class UpdateInfo
-    {
-        public string? Name { get; set; }
-        public string? Attribute { get; set; }
-        public string? Version { get; set; }
-        public string? Path { get; set; }
-    }
-    */
 }
