@@ -15,8 +15,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="NeximDataControl">
+      <HintPath>..\..\LCU_dlls\NeximDataControl.dll</HintPath>
+    </Reference>
     <Reference Include="SymmetricCryptography">
-      <HintPath>..\..\WPF_UnitTransferTool\SymmetricCryptography.dll</HintPath>
+      <HintPath>..\..\LCU_dlls\SymmetricCryptography.dll</HintPath>
     </Reference>
   </ItemGroup>
 

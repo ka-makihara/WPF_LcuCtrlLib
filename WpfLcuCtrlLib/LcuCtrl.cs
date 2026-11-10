@@ -11,21 +11,29 @@ using System.Threading.Tasks;
 using System.Xml.Serialization;
 using Renci.SshNet;
 
-using FluentFTP;
 using Reactive.Bindings;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using FluentFTP;
 
 namespace WpfLcuCtrlLib
 {
-	public partial class LcuCtrl(string lcuName, int id):IDisposable
+	public partial class LcuCtrl(
+		string lcuName,
+		int id,
+		IFileTransferClient? fileTransferClient = null,
+		ILcuWebApiClient? webApiClient = null,
+		Action<string>? log = null):IDisposable
 	{
+		private readonly IFileTransferClient _fileTransferClient =
+			fileTransferClient ?? new FluentFtpFileTransferClient();
+		private readonly ILcuWebApiClient _webApiClient =
+			webApiClient ?? new HttpLcuWebApiClient(lcuName, log: log);
+
 		[DllImport("mcAccount.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
 		static extern int getMcUser(StringBuilder s, Int32 len);
 		[DllImport("mcAccount.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
 		static extern int getMcPass(StringBuilder s, Int32 len);
-
-		private static readonly HttpClient httpClient = new HttpClient();
 
 		public string Name { get; set; } = lcuName; //LCUのPC名(IPアドレス)
 		public string FtpUser { get; set; }
@@ -110,44 +118,13 @@ namespace WpfLcuCtrlLib
 		/// <param name="host">LCU名</param>
 		/// <param name="command">コマンド</param>
 		/// <returns></returns>
-		public async Task<string> LCU_HttpGet(string command)
+		public async Task<string> LCU_HttpGet(
+			string command,
+			CancellationToken? token = null)
 		{
-			var uri = new Uri($"http://{Name}/LCUWeb/api/{command}");
-
-			try
-			{
-				var httpWebRequest = (HttpWebRequest)HttpWebRequest.Create(uri);
-
-				// 404 などエラーが発生した場合に例外を発生する
-				HttpWebResponse response = (HttpWebResponse)httpWebRequest.GetResponse();
-
-				//var response = await httpWebRequest.GetResponseAsync();
-
-				var stream = response.GetResponseStream();
-				var reader = new StreamReader(stream);
-				var responseBody = await reader.ReadToEndAsync();
-				reader.Close();
-
-				return responseBody;
-			}
-			catch (WebException e)
-			{
-				if( e.Response == null)
-				{
-					Debug.WriteLine($"WebException: {e.Message}");
-					return "errorCode"; // 呼び出し側でこれを見ているので・・・
-				}
-				HttpWebResponse response = (HttpWebResponse)e.Response;
-
-				Debug.WriteLine($"ResponseCode={response.StatusCode} Desc={response.StatusDescription}");
-
-				var stream = response.GetResponseStream();
-				var reader = new StreamReader(stream);
-				var responseBody = await reader.ReadToEndAsync();
-				reader.Close();
-
-				return responseBody;
-			}
+			return await _webApiClient.GetAsync(
+				command,
+				token ?? CancellationToken.None);
 		}
 		/// <summary>
 		/// FTP Download
@@ -238,39 +215,9 @@ namespace WpfLcuCtrlLib
 		/// <returns></returns>
 		public async Task<string> LCU_Command(string payload, CancellationToken? token=null)
 		{
-			var uri = new Uri($"http://{Name}/LCUWeb/api/lcuCommand");
-
-			var content = new StringContent(payload, Encoding.UTF8, "application/json");
-			string ret = "";
-			try {
-				HttpResponseMessage result;
-				string str;
-				if (token != null)
-				{
-					result = await httpClient.PostAsync(uri, content);
-					str = await result.Content.ReadAsStringAsync();
-				}
-				else
-				{
-					result = await httpClient.PostAsync(uri, content);
-					str = await result.Content.ReadAsStringAsync();
-				}
-
-				ret = str;
-			}
-			catch (HttpRequestException e) {
-				Debug.WriteLine(e.Message);
-				throw;
-			}
-			catch (TaskCanceledException e)
-			{
-				Debug.WriteLine(e.Message);
-				throw;
-			}
-			finally {
-				content.Dispose();
-			}
-			return ret;
+			return await _webApiClient.SendCommandAsync(
+				payload,
+				token ?? CancellationToken.None);
 		}
 
 		/// <summary>
@@ -365,7 +312,7 @@ namespace WpfLcuCtrlLib
 		/// <param name="mcFilePath">取得したいファイル名</param>
 		/// <param name="lcuPath">LCU上の保存パス</param>
 		/// <param name="localPath">取得したファイルを格納するパス</param>
-		public async Task<bool> GetMachineFiles(string machineName, int pos, List<string> mcFile, List<string> lcuFile, string localPath, CancellationToken token)
+		public async Task<bool> GetMachineFiles(string machineName, string ipAddress,int pos, List<string> mcFile, List<string> lcuFile, string localPath, CancellationToken token)
 		{
 			int errIdx = -1; // エラーコードのインデックス
 
@@ -379,7 +326,8 @@ namespace WpfLcuCtrlLib
 			// 装置(machine)からファイル(path)を取得する(結果、LCU の <FtpRoot>/MCFiles/(UUID)/{name} に保存されている)
 			List<string> files = mcFile;
 			List<string> lcuFiles = lcuFile;
-			string ret =await LCU_Command(GetMcFiles.Command(machineName, pos, McUser,mcPass, files, lcuFiles),token);
+			//string ret =await LCU_Command(GetMcFiles.Command(machineName, pos, McUser,mcPass, files, lcuFiles),token);
+			string ret =await LCU_Command(GetMcFiles.Command(ipAddress, pos, McUser,mcPass, files, lcuFiles),token);
 
 			if( ret == "Internal Server Error")
 			{
@@ -396,6 +344,7 @@ namespace WpfLcuCtrlLib
 			{
 				var ec = retMsg.ftp.data[errIdx].errorCode;
 				Debug.WriteLine($"{retMsg.ftp.data[errIdx].mcPath}={retMsg.ftp.data[errIdx].errorMessage} errCode={ec}");
+				return false;
 			}
 
 			//コマンドのUUIDを取得する
@@ -406,56 +355,48 @@ namespace WpfLcuCtrlLib
 				.Where(x => x.errorCode == "" && x.errorMessage == "" && x.mcPath != null && x.lcuPath != null)
 				.Select(x => (x.mcPath, x.lcuPath)).ToList();
 
+			int downloadedCount = 0;
 			if (ftpData.Count != 0)
 			{
-				await DownLoadFiles(Name, FtpUser, FtpPassword, ftpData, localPath, token);
+				downloadedCount = await DownLoadFiles(Name, FtpUser, FtpPassword, ftpData, localPath, token);
 			}
 
 			//コマンド毎にUUIDが変わるので、コマンド終了時にフォルダを削除する
 			await ClearFtpFolders("/MCFiles/" + LcuUUID_Path, token);
 
-			//return true;
-			return (errIdx == -1);
+			return errIdx == -1
+				&& ftpData.Count == mcFile.Count
+				&& downloadedCount == ftpData.Count;
 		}
 
 		public async Task<int> DownLoadFiles(string host, string user, string password, List<(string?,string?)> files, string localPath, CancellationToken token)
 		{
-			int ret = 0;
-			using (var ftpClient = new AsyncFtpClient(host.Split(':')[0], user, password))
+			var downloads = files
+				.Where(file => file.Item1 != null && file.Item2 != null)
+				.Select(file => new FileTransferRequest(
+					Path.Combine(localPath, file.Item1!).Replace("/", "\\"),
+					"/MCFiles/" + file.Item2!.Replace("\\", "/")))
+				.ToArray();
+
+			var session = await _fileTransferClient.ConnectAsync(
+				host.Split(':')[0],
+				user,
+				password,
+				token);
+			try
 			{
-				await ftpClient.Connect(token);
-				foreach (var file in files)
-				{
-					if (file.Item1 == null || file.Item2 == null)
-					{
-						Debug.WriteLine("File path is null.");
-						continue;
-					}
-					var remotePath = "/MCFiles/"+ file.Item2.Replace("\\", "/");
-					var localFilePath = Path.Combine(localPath, file.Item1);
-					localFilePath = localFilePath.Replace("/", "\\");
-					try
-					{
-						// フォルダがない場合は作成する(既に存在していてもエラーにならないので、無条件で作成)
-						System.IO.Directory.CreateDirectory(Path.GetDirectoryName(localFilePath));
-						await ftpClient.DownloadFile(localFilePath, remotePath, token: token);
-						Debug.WriteLine($"Download File: {remotePath} to {localFilePath}");
-						ret++;
-					}
-					catch (Exception e)
-					{
-						Debug.WriteLine(e.Message);
-						break;
-					}
-				}
-				await ftpClient.Disconnect(token);
+				var results = await session.DownloadFilesAsync(downloads, token);
+				return results.Count(result => result.IsSuccess);
 			}
-			return ret;
+			finally
+			{
+				await session.DisconnectAsync(token);
+			}
 		}
 
-		public async Task<bool> GetMachineFile(string machineName, int pos, string mcFile, string lcuFile, string localPath, CancellationToken token)
+		public async Task<bool> GetMachineFile(string machineName, string IpAddress, int pos, string mcFile, string lcuFile, string localPath, CancellationToken token)
 		{
-			return await GetMachineFiles(machineName, pos, [mcFile], [lcuFile], localPath, token);
+			return await GetMachineFiles(machineName, IpAddress, pos, [mcFile], [lcuFile], localPath, token);
 		}
 
 		/// <summary>
@@ -466,7 +407,7 @@ namespace WpfLcuCtrlLib
 		/// <param name="mcFile">取得したいファイル名</param>
 		/// <param name="lcuFile">LCU上の保存パス</param>
 		/// <param name="localPath">取得したファイルを格納するパス</param>
-		public async Task<bool> PutMachineFile(string machineName, int pos, string mcFile, string lcuFile, string localPath, CancellationToken? token=null)
+		public async Task<bool> PutMachineFile(string machineName, string IpAddress, int pos, string mcFile, string lcuFile, string localPath, CancellationToken? token=null)
 		{
 			string fileName = Path.GetFileName(mcFile);
 			int errIdx = -1; // エラーコードのインデックス
@@ -478,25 +419,33 @@ namespace WpfLcuCtrlLib
 			len = getMcPass(sb, sb.Capacity);
 			string mcPass = sb.ToString();
 
-			// LCU FTPアカウント情報
-			string user = FtpUser;
-			string password = FtpPassword;
-
-			// LCUへファイルを転送する(FTP, SFTP)
-			//var ftpUrl = $"ftp://{Name.Split(":")[0]}/LCU_{pos}/{lcuFile}";
-			var ftpUrl = $"ftp://{Name.Split(":")[0]}/{lcuFile}";
-
-			string localFilePath = localPath + fileName;
-
-			bool ret = FTP_Upload(ftpUrl, user, password, localFilePath);
-			if(ret == false)
+			string localFilePath = Path.Combine(localPath, fileName);
+			string remoteFilePath = "/" + lcuFile.TrimStart('/');
+			var transferSession = await _fileTransferClient.ConnectAsync(
+				Name.Split(':')[0],
+				FtpUser,
+				FtpPassword,
+				token ?? CancellationToken.None);
+			try
 			{
-				return false;
+				var transferResult = await transferSession.UploadFileAsync(
+					localFilePath,
+					remoteFilePath,
+					token ?? CancellationToken.None);
+				if (!transferResult.IsSuccess)
+				{
+					return false;
+				}
+			}
+			finally
+			{
+				await transferSession.DisconnectAsync(token ?? CancellationToken.None);
 			}
 
 			List<string> files = [ mcFile ];
 			List<string> lcuFiles = [lcuFile];
-			string cmdRet = await LCU_Command(PostMcFile.Command(machineName, pos, McUser,mcPass, files, lcuFiles),token);
+			//string cmdRet = await LCU_Command(PostMcFile.Command(machineName, pos, McUser,mcPass, files, lcuFiles),token);
+			string cmdRet = await LCU_Command(PostMcFile.Command(IpAddress, pos, McUser,mcPass, files, lcuFiles),token);
 
 			if( cmdRet == "Internal Server Error")
 			{
@@ -527,73 +476,30 @@ namespace WpfLcuCtrlLib
 		/// </summary>
 		/// <param name="files">ファイルリスト</param>
 		/// <returns></returns>
-		public bool CreateFtpFolders(List<string> files, string ftpRoot, bool withFile = false)
+		public async Task<bool> CreateFtpFolders(
+			List<string> files,
+			string ftpRoot,
+			bool withFile = false,
+			CancellationToken token = default)
 		{
-			string user = FtpUser;
-			string password = FtpPassword;
-
-			var ftpClient = new FtpClient(Name.Split(":")[0], user, password);
-			string path = "";
-
-			ftpClient.AutoConnect();
-			foreach (string file in files) {
-				if (withFile == true)
-				{
-					//フォルダ名を取り出す
-					path = Path.GetDirectoryName(ftpRoot + file);
-				}
-				else
-				{
-					path = ftpRoot + file;	
-				}
-
-				//途中のフォルダも自動で生成してくれるFTPサーバーなら
-				//  LCU 借りてテストしてOKだったので。
-				ftpClient.CreateDirectory(path);
-				Debug.WriteLine(path);
-
-				/*
-				// 途中のフォルダを分割する必要がある場合
-				var ff = path.Split("\\");
-				var path2 = "";
-				foreach (string f in ff)
-				{
-					if( f == "") { continue; }
-
-					//パスの区切り文字は環境によって異なるので、適宜変更する
-					path2 += (("\\") + f);
-					//path2 += (("/") + f);
-
-					ftpClient.CreateDirectory(path2);
-					Debug.WriteLine(path2);
-				}
-				*/
-			}
-			ftpClient.Disconnect();
-
-			return true;
-		}
-
-		/// <summary>
-		/// FTPサーバーの指定されたフォルダ以下をクリアする
-		/// </summary>
-		/// <param name="ftpClient"></param>
-		/// <param name="folder"></param>
-		private static async Task<bool> DeleteFtpFolder(AsyncFtpClient ftpClient, string folder)
-		{
-			var files = await ftpClient.GetListing(folder);
-			foreach (FtpListItem file in files)
+			var transferSession = await ConnectFileTransferAsync(token);
+			try
 			{
-				if (file.Type == FtpObjectType.Directory)
+				foreach (string file in files)
 				{
-					await DeleteFtpFolder(ftpClient, file.FullName);
-				}
-				else
-				{
-					await ftpClient.DeleteFile(file.FullName);
+					token.ThrowIfCancellationRequested();
+					string path = withFile
+						? Path.GetDirectoryName(ftpRoot + file) ?? throw new InvalidOperationException($"Could not determine the directory for '{file}'.")
+						: ftpRoot + file;
+
+					await transferSession.CreateDirectoryAsync(path, token);
+					Debug.WriteLine(path);
 				}
 			}
-			await ftpClient.DeleteDirectory(folder);
+			finally
+			{
+				await transferSession.DisconnectAsync(CancellationToken.None);
+			}
 
 			return true;
 		}
@@ -605,34 +511,21 @@ namespace WpfLcuCtrlLib
 		/// <returns></returns>
 		public async Task<bool> ClearFtpFolders(string startFolder, CancellationToken token)
 		{
-			string user = FtpUser;
-			string password = FtpPassword;
-
-			//Debug.WriteLine($"ClearFtpFolders: {startFolder}");
-
-			var ftpClient = new AsyncFtpClient(Name.Split(":")[0],user, password);
-
-			await ftpClient.AutoConnect(token);
-
-			var files = await ftpClient.GetListing(startFolder);
-			foreach (FtpListItem file in files)
+			var transferSession = await ConnectFileTransferAsync(token);
+			try
 			{
-				if (file.Type == FtpObjectType.Directory)
-				{
-					await DeleteFtpFolder(ftpClient, file.FullName);
-				}
-				else
-				{
-					await ftpClient.DeleteFile(file.FullName, token);
-				}
+				await transferSession.DeleteDirectoryAsync(startFolder, token);
 			}
-			await ftpClient.DeleteDirectory(startFolder,token);
+			finally
+			{
+				await transferSession.DisconnectAsync(CancellationToken.None);
+			}
 
-			await ftpClient.Disconnect(token);
-
-			//Debug.WriteLine($"ClearFtpFolders: End"); 
 			return true;
 		}
+
+		private Task<IFileTransferSession> ConnectFileTransferAsync(CancellationToken token) =>
+			_fileTransferClient.ConnectAsync(Name.Split(":")[0], FtpUser, FtpPassword, token);
 
 		/// <summary>
 		/// FTP によるファイルアップロード
@@ -795,54 +688,33 @@ namespace WpfLcuCtrlLib
 		/// <returns></returns>
 		public async Task<bool> DownloadFiles(string ftpRoot, string srcRoot, List<string> files, CancellationToken token)
 		{
-			string user = FtpUser;
-			string password = FtpPassword;
-			bool ret = true;
-
-			var ftpClient = new FtpClient(Name.Split(":")[0], user, password);
-
-			ftpClient.AutoConnect();
-			foreach (string file in files)
+			var requests = files.Select(file =>
 			{
 				var fileName = Path.GetFileName(file);
-				var remotePath = ftpRoot + Path.GetDirectoryName(file) + "\\" + fileName;
-				var localPath = srcRoot + file;
+				var remotePath = (ftpRoot + Path.GetDirectoryName(file) + "\\" + fileName)
+					.Replace("\\", "/");
+				var localPath = (srcRoot + file).Replace("/", "\\");
+				return new FileTransferRequest(localPath, remotePath);
+			}).ToArray();
 
-				try
-				{
-					localPath = localPath.Replace("/", "\\");
-					remotePath = remotePath.Replace("\\", "/");
-
-					// フォルダがない場合は作成する(既に存在していてもエラーにならないので、無条件で作成)
-					System.IO.Directory.CreateDirectory(Path.GetDirectoryName(localPath));
-
-					ftpClient.DownloadFile(localPath, remotePath);
-					
-					Debug.WriteLine($"Download File: {remotePath} to {localPath}");
-
-					if( token.IsCancellationRequested)
-					{
-						ret = false;
-						break;
-					}
-				}
-				catch (Exception e)
-				{
-					Debug.WriteLine(e.Message);
-					ret = false;
-					break;
-				}
+			var transferSession = await ConnectFileTransferAsync(token);
+			try
+			{
+				var results = await transferSession.DownloadFilesAsync(requests, token);
+				return results.Count == requests.Length && results.All(result => result.IsSuccess);
 			}
-			ftpClient.Disconnect();
-
-			return ret;
+			catch (OperationCanceledException) when (token.IsCancellationRequested)
+			{
+				return false;
+			}
+			finally
+			{
+				await transferSession.DisconnectAsync(CancellationToken.None);
+			}
 		}
 
 		public void Dispose()
 		{
-			
-			//  いらないかも・・・
-			httpClient.Dispose();
 			Debug.WriteLine("LcuCtrl::Dispose");
 		}
 	}
